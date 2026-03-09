@@ -14,9 +14,9 @@ def query_disks_readable():
 	if os.uname().sysname == "Darwin":
 		for this_file in os.listdir("/dev/"):
 			if re.search("(?=^[^s]+s[^s]+$)^rdisk", this_file): # this one line took hours. regex is magic
-				disks_readable["Device " + this_file] = "/dev/" + this_file
+				disks_readable["Device " + this_file] = this_file
 	if os.uname().sysname == "Linux":
 		for this_file in os.listdir("/dev/"):
 			if re.search("^sd[a-z]$|^mmcblk[0-9]$", this_file): # only about 5min to make :> getting better
-				disks_readable["Device " + this_file] = "/dev/" + this_file
+				disks_readable["Device " + this_file] = this_file
 	return disks_readable

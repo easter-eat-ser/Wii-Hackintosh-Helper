@@ -6,8 +6,9 @@ window_title = "WiiIntosh Helper"
 
 inf_sys = os.uname().sysname
 inf_selecteddisk = "None"
-inf_selecteddisksize = "Unable to detect (unimplemented)"
-inf_currentmap = "Unable to detect (unimplemented)"
+inf_selecteddisk_nofolder = "None"
+inf_selecteddisksize = 0
+inf_currentmap = "Unimplement"
 
 location_sudo = "/usr/bin/sudo"
 location_diskutil = "/usr/sbin/diskutil"
@@ -15,7 +16,10 @@ location_parted = "/usr/sbin/parted"
 location_dd = "/bin/dd"
 
 def query_disk_size_parted(disk):
-	return (subprocess.check_output([location_sudo, location_parted, disk, "print"]).split(b'\n')[1].split(b': ')[1]).decode("utf-8")
+	# return (subprocess.check_output([location_sudo, location_parted, disk, "print"]).split(b'\n')[1].split(b': ')[1]).decode("utf-8")
+    global inf_selecteddisk_nofolder
+    with open("/sys/block/" + disk + "/size") as f: s = f.read()
+    return int(s) * 512
 
 def evaluate_disk():
 	global inf_selecteddisk
@@ -24,15 +28,16 @@ def evaluate_disk():
 	# print("Superuser access is required to get disk properties")
 	# subprocess.call(["/usr/bin/sudo", "command that fetches the mbr data"])
 	# inf_selecteddisksize = str(psutil.disk_usage(inf_selecteddisk).total)
-
-
+	inf_selecteddisksize = int(query_disk_size_parted(inf_selecteddisk_nofolder))
 def select_disk():
 	tui.print_header("Select disk")
 	diskmenu_options = disks.query_disks_readable()
 	diskmenu_selected_readable = tui.option_menu(list(diskmenu_options))
 	diskmenu_selected = diskmenu_options[diskmenu_selected_readable]
 	global inf_selecteddisk
-	inf_selecteddisk = diskmenu_selected
+	global inf_selecteddisk_nofolder
+	inf_selecteddisk_nofolder = diskmenu_selected
+	inf_selecteddisk = "/dev/" + diskmenu_selected
 	evaluate_disk()
 
 def initialize_disk():
@@ -69,12 +74,12 @@ def initialize_disk():
 	if disk_util == "diskutil":
 		print("Unable to find disk size with diskutil! Using 4GB fallback.")
 	else:
-		disk_size = query_disk_size_parted(inf_selecteddisk)
-	print("Disk size " + disk_size)
+		disk_size = query_disk_size_parted(inf_selecteddisk_nofolder)
+	print("Disk size " + str(disk_size))
 
-	disk_fat_size = input("[default 0.1] Size of the FAT (homebrew) partition: ")
+	disk_fat_size = input("[default 100] Size of the FAT (homebrew) partition in MB, whole numbers only: ")
 	if disk_fat_size == "":
-		disk_fat_size = "100MB"
+		disk_fat_size = "100"
 
 	print("WH - Creating MBR partition table")
 	if disk_util == "diskutil":
@@ -100,9 +105,9 @@ def initialize_disk():
 	else:
 		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mktable", "mac"])
 		#process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "fat32", "32.8kB", "1048064b""]) Skip making empty partiton?
-		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "fat32", "1048576b", disk_fat_size])
-		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "hfs+", disk_fat_size, disk_fat_size])
-		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "hfs+", "1048576b", disk_fat_size])
+		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "fat", "fat32", "1048576b", disk_fat_size + "MB"])
+		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "Installer", "hfs+", disk_fat_size + "MB", str(int(disk_fat_size) + 650) + "MB"])
+		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "Root", "hfs+", str(int(disk_fat_size) + 650) + "MB", str(disk_size - 1) + "B"])
 	
 	print("WH - Saving APM data")
 	process = subprocess.call(["/usr/bin/sudo", location_dd, "if=" + inf_selecteddisk, "of=" + "wiiu_apm.bin", "bs=512", "count=1"])
@@ -120,6 +125,7 @@ def main_loop():
 
 	tui.print_info("Selected disk", inf_selecteddisk) # + " - " + inf_selecteddisksize)
 	tui.print_info("Current partition map", inf_currentmap)
+	tui.print_info("Disk size", str(int(inf_selecteddisksize) // 1073741824))
 
 	selected_option_readable = tui.option_menu(list(menu_options))
 	selected_option = menu_options[selected_option_readable]
