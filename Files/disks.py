@@ -1,4 +1,4 @@
-import os, re, subprocess
+import os, re, subprocess, psutil
 
 #def query_disks_readable():	PSUtil can only get partitions, and we need actual devices - especially on Mac since they have volumes and stuff
 #	disks_toparse = psutil.disk_partitions()    I will remove the PSUtil import someday
@@ -16,10 +16,7 @@ def query_disks_readable():
 			if re.search("(?=^[^s]+s[^s]+$)^rdisk", this_file): # this one line took hours. regex is magic
 				disks_readable["Device " + this_file] = "/dev/" + this_file
 	if os.uname().sysname == "Linux":
-		print("Linux support unimplemented")
 		for this_file in os.listdir("/dev/"):
-			if re.search("(?=^[^s]+s[^s]+$)^rdisk", this_file): # Linux support unimplemented. This doesn't work
+			if re.search("^sd[a-z]$|^mmcblk[0-9]$", this_file): # only about 5min to make :> getting better
 				disks_readable["Device " + this_file] = "/dev/" + this_file
 	return disks_readable
-
-

@@ -1,4 +1,4 @@
-import os, subprocess
+import os, subprocess, shutil
 from Files import tui, disks
 
 continue_loop = True
@@ -11,8 +11,11 @@ inf_currentmap = "Unable to detect (unimplemented)"
 
 location_sudo = "/usr/bin/sudo"
 location_diskutil = "/usr/sbin/diskutil"
-location_parted = "/usr/bin/parted"
+location_parted = "/usr/sbin/parted"
 location_dd = "/bin/dd"
+
+def query_disk_size_parted(disk):
+	return (subprocess.check_output([location_sudo, location_parted, disk, "print"]).split(b'\n')[1].split(b': ')[1]).decode("utf-8")
 
 def evaluate_disk():
 	global inf_selecteddisk
@@ -50,10 +53,10 @@ def initialize_disk():
 
 	print("This process will automatically format and partition your USB drive as a hybrid APM/MBR. It will also save backups of the MBR and APM so you can show or hide the HFS partition anytime. Initializing again will erase any previous backups.")
 	print("If you do not enter a partition size, the program will select the optimal default for a setup with minimal homebrew.")
-	print(inf_selecteddisk)
+	print("Using " + inf_selecteddisk)
 
 	if inf_sys == "Darwin":
-		print("Auto-detected MacOS platform. Diskutil will be used.")
+		print("Detected MacOS platform. Diskutil will be used.")
 		disk_util = "diskutil"
 		while not os.path.isfile(location_diskutil):
 			input("Diskutil not found at " + location_diskutil +"! Enter path (including binary name:) ")
@@ -62,32 +65,44 @@ def initialize_disk():
 		while not os.path.isfile(location_parted):
 			input("Parted not found at " + location_parted +"! Enter path (including binary name:) ")
 
+	disk_size = "4" # gigabytes fallback
+	if disk_util == "diskutil":
+		print("Unable to find disk size with diskutil! Using 4GB fallback.")
+	else:
+		disk_size = query_disk_size_parted(inf_selecteddisk)
+	print("Disk size " + disk_size)
 
-	disk_fat_size = input("[default 0.1] Size of the FAT (homebrew) partition in GB: ")
+	disk_fat_size = input("[default 0.1] Size of the FAT (homebrew) partition: ")
 	if disk_fat_size == "":
-		disk_fat_size = "0.1"
+		disk_fat_size = "100MB"
+
 	print("WH - Creating MBR partition table")
 	if disk_util == "diskutil":
-		process = subprocess.call(["/usr/bin/sudo", location_diskutil, "partitionDisk", inf_selecteddisk, "3", "MBR", "FREE", "%noformat%", "32768B", "FAT32", "FAT", str(disk_fat_size) + "G", "FREE", "%noformat%", "0"])
+		process = subprocess.call([location_sudo, location_diskutil, "partitionDisk", inf_selecteddisk, "3", "MBR", "FREE", "%noformat%", "32768B", "FAT32", "FAT", str(disk_fat_size), "FREE", "%noformat%", "0"]) # i CANNOT get diskutil to line up the partitions. heeeelp
 	else:
-		print("equivalent parted command") # TODO
+		process = subprocess.call([location_sudo, location_parted, inf_selecteddisk, "mktable", "msdos"])
+		process = subprocess.call([location_sudo, location_parted, inf_selecteddisk, "mkpart", "primary", "fat32", "1048576b", disk_fat_size])
 
 	if process != 0:
 		input("Previous command encountered an error! Quitting...")
 		return()
 
 	print("WH - Saving MBR data")
-	process = subprocess.call(["/usr/bin/sudo", location_dd, "if=" + inf_selecteddisk, "of=" + "wiiu_mbr.bin", "bs=512", "count=1"])
+	process = subprocess.call([location_sudo, location_dd, "if=" + inf_selecteddisk, "of=" + "wiiu_mbr.bin", "bs=512", "count=1"])
 
 	if process != 0:
 		input("Previous command encountered an error! Quitting...")
 		return()
 
 	print("WH - APM partitioning")
-	if disk_util == "diskutil":#                                         command          disk            #p   map    [--------------------------------] [==============================================] [++++++++++++++++++++++++++] [~~~~~~~~~~~~~~~~~~]
-		process = subprocess.call(["/usr/bin/sudo", location_diskutil, "partitionDisk", inf_selecteddisk, "4", "APM", "FREE", "%noformat%", "1985S", "FAT32", "%noformat%", str(disk_fat_size) + "G", "HFS+", "Installer", "650M", "HFS+", "Root", "0"])
+	if disk_util == "diskutil": # a bit of a run-on. sorry
+		process = subprocess.call(["/usr/bin/sudo", location_diskutil, "partitionDisk", inf_selecteddisk, "4", "APM", "FREE", "%noformat%", "1985S", "FAT32", "%noformat%", str(disk_fat_size), "HFS+", "Installer", "650M", "HFS+", "Root", "0"])
 	else:
-		print("equivalent parted command") # TODO
+		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mktable", "mac"])
+		#process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "fat32", "32.8kB", "1048064b""]) Skip making empty partiton?
+		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "fat32", "1048576b", disk_fat_size])
+		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "hfs+", disk_fat_size, disk_fat_size])
+		process = subprocess.call(["/usr/bin/sudo", location_parted, inf_selecteddisk, "mkpart", "primary", "hfs+", "1048576b", disk_fat_size])
 	
 	print("WH - Saving APM data")
 	process = subprocess.call(["/usr/bin/sudo", location_dd, "if=" + inf_selecteddisk, "of=" + "wiiu_apm.bin", "bs=512", "count=1"])
@@ -116,7 +131,6 @@ def main_loop():
 		select_disk()	
 	elif selected_option == "diskinit":
 		initialize_disk()
-		input("doneso")
 	else:
 		print("Not valid command")
 
