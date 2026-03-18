@@ -15,6 +15,8 @@ location_diskutil = "/usr/sbin/diskutil"
 location_parted = "/usr/sbin/parted"
 location_dd = "/bin/dd"
 
+input("This tool is outdated and semi-broken! Please use the GUI. (enter to continue for whatever reason)")
+
 def query_disk_size_parted(disk):
 	# return (subprocess.check_output([location_sudo, location_parted, disk, "print"]).split(b'\n')[1].split(b': ')[1]).decode("utf-8")
     global inf_selecteddisk_nofolder
